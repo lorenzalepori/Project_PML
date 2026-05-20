@@ -93,3 +93,59 @@ if not os.path.exists(m_path):
                     (df['c_resid'] == 'DOM') &
                     (df['unit'] == 'NR')]
   mobility_data.to_csv(m_path, index=False)
+
+
+#Data cleaning - West Nile
+wn_f = pd.read_csv(w_path)
+wn_f = wn_f.drop(columns=["url_bulletins",
+                          "code_region",
+                          "lat",
+                          "long",
+                          "year",
+                          "type_infection"])
+wn_f["data"] = pd.to_datetime(wn_f["data"])
+idx = wn_f[wn_f["name_region"].str.startswith("Importato", na=False)].index
+wn_f = wn_f.drop(index=idx)
+wn_f["month"] = wn_f["data"].dt.to_period("M")
+wn_f["name_region"] = wn_f["name_region"].replace({
+    "Friuli Venezia Giulia": "Friuli-Venezia-Giulia"
+})
+wn_f = wn_f.groupby(["month","name_region"]).sum(numeric_only=True).reset_index()
+wn_f =wn_f.rename(columns={"name_region": "region"})
+
+wnc_path = os.path.join(processed_dir, "wn_final.csv")
+wn_f.to_csv(wnc_path, index=False)
+
+#Data cleaning - Influenza
+inf_f = pd.read_csv(i_path)
+inf_f = inf_f.drop(columns=["flu_season",
+                          "number_healthcare_workers",
+                          "population",
+                          "incidence",
+                          "cases_0-4", "inc_0-4",
+                          "cases_5-14","inc_5-14",
+                          "cases_15-64","inc_15-64",
+                          "cases_65+","inc_65+"])
+#Group Autonomous provinces
+inf_f["region"] = inf_f["region"].replace({
+   "AP Trento": "Trentino-Alto-Adige",
+   "AP Bolzano": "Trentino-Alto-Adige"
+})
+#Delete the data of years we're not interested in
+inf_f = inf_f[inf_f["year_week"].str[:4].fillna(0).astype(int)>=2017]
+inf_f["month"] = pd.to_datetime(
+    inf_f["year_week"].apply(lambda x: f"{x[:4]}-W{x[5:]}-1"), 
+    format="%Y-W%W-%w"
+).dt.to_period("M")
+inf_f["region"] = inf_f["region"].replace({
+    "Friuli-Venezia Giulia": "Friuli-Venezia-Giulia"
+})
+inf_f = inf_f.groupby(["month","region" ]).sum(numeric_only=True).reset_index()
+inf_f = inf_f.sort_values(["region", "month"])
+#Create new cases and total cases columns
+inf_f["new_cases"]   = inf_f.groupby("region")["number_cases"].diff().fillna(0)
+inf_f["total_cases"] = inf_f.groupby("region")["number_cases"].cumsum()
+inf_f = inf_f.drop(columns=["number_cases"])
+
+inf_path = os.path.join(processed_dir, "influenza_final.csv")
+inf_f.to_csv(inf_path, index=False)
