@@ -1,5 +1,5 @@
 Data/*.csv
-Data/*.csv
+Data/**/*.csv
 Data/*.zip
 
 __pycache__/
