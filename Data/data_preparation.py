@@ -131,8 +131,7 @@ inf_f["region"] = inf_f["region"].replace({
    "AP Trento": "Trentino-Alto-Adige",
    "AP Bolzano": "Trentino-Alto-Adige"
 })
-#Delete the data of years we're not interested in
-inf_f = inf_f[inf_f["year_week"].str[:4].fillna(0).astype(int)>=2017]
+
 inf_f["month"] = pd.to_datetime(
     inf_f["year_week"].apply(lambda x: f"{x[:4]}-W{x[5:]}-1"), 
     format="%Y-W%W-%w"
@@ -145,7 +144,12 @@ inf_f = inf_f.sort_values(["region", "month"])
 #Create new cases and total cases columns
 inf_f["new_cases"]   = inf_f.groupby("region")["number_cases"].diff().fillna(0)
 inf_f["total_cases"] = inf_f.groupby("region")["number_cases"].cumsum()
+inf_f["total_cases"] = inf_f.groupby(
+    ["region", inf_f["month"].apply(lambda x: x.year)]
+)["number_cases"].cumsum()
 inf_f = inf_f.drop(columns=["number_cases"])
+#Delete the data of years we're not interested in
+inf_f = inf_f[inf_f["month"].apply(lambda x: x.year) >= 2017]
 
 inf_path = os.path.join(processed_dir, "influenza_final.csv")
 inf_f.to_csv(inf_path, index=False)
