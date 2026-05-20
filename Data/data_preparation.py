@@ -6,8 +6,10 @@ import urllib3
 import eurostat
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-
-
+def missing_download(file_path,download_func):
+    if not os.path.exists(file_path):
+        download_func()
+    
 directory = os.path.dirname(__file__)
 raw_dir = os.path.join(directory, "raw_data")
 processed_dir = os.path.join(directory, "processed_data")
@@ -24,58 +26,70 @@ wn_data = {
     "wn_2024": "https://raw.githubusercontent.com/fbranda/west-nile/main/2024/human-surveillance/wn-ita-regions-human-surveillance-2024.csv"
 }
 
-dataframes = []
+w_path = os.path.join(raw_dir, "wn_dataset.csv")
+if not os.path.exists(w_path):
 
-for year, url in wn_data.items():
+  dataframes = []
 
-    df = pd.read_csv(url)
-    df['year']=year
-    dataframes.append(df)
+  for year, url in wn_data.items():
 
-combined_df = pd.concat(dataframes, ignore_index=True)
-w_output_path = os.path.join(raw_dir, "wn_dataset.csv")
-combined_df.to_csv(w_output_path, index=False)
+      df = pd.read_csv(url)
+      df['year']=year
+      dataframes.append(df)
+
+  combined_df = pd.concat(dataframes, ignore_index=True)
+  combined_df.to_csv(w_path, index=False)
 
 
 #Download of the Influenza data
 influenza_url =  "https://raw.githubusercontent.com/fbranda/influnet/main/data-aggregated/epidemiological_data/regional_cases.csv"
     
-influenza_data = pd.read_csv(influenza_url)
-i_output_path = os.path.join(raw_dir, "influenza_dataset.csv")
-influenza_data.to_csv(i_output_path, index=False)
+i_path = os.path.join(raw_dir, "influenza_dataset.csv")
+if not os.path.exists(i_path):
+
+  influenza_data = pd.read_csv(influenza_url)
+  influenza_data.to_csv(i_path, index=False)
 
 
 #Download of the COVID-19 data
 covid_url = "https://covid19.infn.it/grafici/regioni.csv"
 
-r = requests.get(covid_url, verify=False)
-r.raise_for_status()
+c_path = os.path.join(raw_dir,"covid_dataset.csv")
+if not os.path.exists(c_path):
 
-covid_data = pd.read_csv(StringIO(r.text))
-c_output_path = os.path.join(raw_dir,"covid_dataset.csv")
-covid_data.to_csv(c_output_path, index=False)
+  r = requests.get(covid_url, verify=False)
+  r.raise_for_status()
+
+  covid_data = pd.read_csv(StringIO(r.text))
+  covid_data.to_csv(c_path, index=False)
 
 #Download of the population data
-df = eurostat.get_data_df('demo_r_pjanaggr3')
-population_data = df[df['geo\\TIME_PERIOD'].str.startswith('IT')& 
+p_path = os.path.join(raw_dir, "population_dataset.csv")
+if not os.path.exists(p_path):
+
+  df = eurostat.get_data_df('demo_r_pjanaggr3')
+  population_data = df[df['geo\\TIME_PERIOD'].str.startswith('IT')& 
                     (df['geo\\TIME_PERIOD'].str.len() == 4)&
                     (df['age'] == 'TOTAL')] 
-p_path = os.path.join(raw_dir, "population_dataset.csv")
-population_data.to_csv(p_path, index=False)
+  population_data.to_csv(p_path, index=False)
 
 #Download of the deaths data
-df = eurostat.get_data_df('hlth_cd_acdr2')
-deaths_data = df[df['geo\\TIME_PERIOD'].str.startswith('IT')& 
+d_path = os.path.join(raw_dir, "deaths_dataset.csv")
+if not os.path.exists(d_path):
+
+  df = eurostat.get_data_df('hlth_cd_acdr2')
+  deaths_data = df[df['geo\\TIME_PERIOD'].str.startswith('IT')& 
                 (df['geo\\TIME_PERIOD'].str.len() == 4)&
                 (df['age'] == 'TOTAL')]
-d_path = os.path.join(raw_dir, "deaths_dataset.csv")
-deaths_data.to_csv(d_path, index=False)
+  deaths_data.to_csv(d_path, index=False)
 
 #Download of the mobility data
-df = eurostat.get_data_df('tour_occ_nin2m')
-mobility_data = df[df['geo\\TIME_PERIOD'].str.startswith('IT')& 
+m_path = os.path.join(raw_dir, "mobility_dataset.csv")
+if not os.path.exists(m_path):
+
+  df = eurostat.get_data_df('tour_occ_nin2m')
+  mobility_data = df[df['geo\\TIME_PERIOD'].str.startswith('IT')& 
                     (df['geo\\TIME_PERIOD'].str.len() == 4)&
                     (df['c_resid'] == 'DOM') &
                     (df['unit'] == 'NR')]
-m_path = os.path.join(raw_dir, "mobility_dataset.csv")
-mobility_data.to_csv(m_path, index=False)
+  mobility_data.to_csv(m_path, index=False)
