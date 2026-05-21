@@ -153,5 +153,3 @@ inf_f = inf_f[inf_f["month"].apply(lambda x: x.year) >= 2017]
 
 inf_path = os.path.join(processed_dir, "influenza_final.csv")
 inf_f.to_csv(inf_path, index=False)
-#Copy data
-print("ciao")
