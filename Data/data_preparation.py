@@ -12,7 +12,7 @@ def missing_download(file_path, download_func):
     if not os.path.exists(file_path):
         download_func()
 
-directory = os.path.dirname(__file__)
+directory = os.path.dirname(os.path.abspath(__file__))
 raw_dir = os.path.join(directory, "raw_data")
 processed_dir = os.path.join(directory, "processed_data")
 os.makedirs(raw_dir, exist_ok=True)
@@ -75,28 +75,37 @@ if not os.path.exists(m_path):
     r.raise_for_status()
     z = zipfile.ZipFile(io.BytesIO(r.content))
     it_files = [n for n in z.namelist()
-                if "_IT_Region_Mobility_Report.csv" in n and n[:4] in ("2021", "2022")]
+                if "_IT_Region_Mobility_Report.csv" in n and n[:4] in ("2020","2021", "2022")]
     frames = [pd.read_csv(z.open(n)) for n in it_files]
     mobility_data = pd.concat(frames, ignore_index=True)
     mobility_data.to_csv(m_path, index=False)
 
 # Population data cleaning
+# NB: NON si sovrascrive il file grezzo. Il pulito va in un file separato, cosi'
+# lo script resta ri-eseguibile. Se un run precedente avesse gia' corrotto il
+# grezzo (salvandoci sopra il pulito), lo si rileva e si riusa cosi' com'e'.
 pop_raw = pd.read_csv(p_path)
-pop_raw = pop_raw[(pop_raw["sex"] == "T") & (pop_raw["age"] == "TOTAL")]
-pop_clean = pop_raw[["geo\\TIME_PERIOD", "2021"]].rename(
-    columns={"geo\\TIME_PERIOD": "nuts2", "2021": "population"}
-)
-pop_clean["region"] = pop_clean["nuts2"].map(region_names)
-unmapped = pop_clean[pop_clean["region"].isna()]["nuts2"].unique()
-if len(unmapped) > 0:
-    print("⚠️ Codici NUTS2 non mappati:", unmapped)
-pop_clean = pop_clean.dropna(subset=["region"])
-pop_clean = pop_clean.groupby("region", as_index=False)["population"].sum()
-pop_clean.to_csv(p_path, index=False)
+if {"region", "population"}.issubset(pop_raw.columns):
+    # il grezzo e' in realta' gia' pulito (eredita' di un run precedente)
+    pop_clean = pop_raw[["region", "population"]].copy()
+else:
+    pop_raw = pop_raw[(pop_raw["sex"] == "T") & (pop_raw["age"] == "TOTAL")]
+    pop_clean = pop_raw[["geo\\TIME_PERIOD", "2021"]].rename(
+        columns={"geo\\TIME_PERIOD": "nuts2", "2021": "population"}
+    )
+    pop_clean["region"] = pop_clean["nuts2"].map(region_names)
+    unmapped = pop_clean[pop_clean["region"].isna()]["nuts2"].unique()
+    if len(unmapped) > 0:
+        print("Codici NUTS2 non mappati:", unmapped)
+    pop_clean = pop_clean.dropna(subset=["region"])
+    pop_clean = pop_clean.groupby("region", as_index=False)["population"].sum()
+
+pc_path = os.path.join(processed_dir, "population_clean.csv")
+pop_clean.to_csv(pc_path, index=False)
 
 
 # Time range for the analysis
-START = pd.Timestamp("2021-01-01")
+START = pd.Timestamp("2020-03-01")
 END = pd.Timestamp("2022-12-31")
 
 # Standardization of the region names
@@ -182,12 +191,11 @@ panel["cases"] = panel["cases"].fillna(0)
 panel["deaths"] = panel["deaths"].fillna(0)
 # Riempie giorni mancanti e poi calcola il cumulativo corretto
 panel["vaccine"] = panel.groupby("region")["vaccine"].ffill().fillna(0)
-panel["vaccine"] = panel.groupby("region")["vaccine"].cumsum()
 panel["mobility"] = (panel.groupby("region")["mobility"]
                      .transform(lambda s: s.interpolate(limit_direction="both")))
 
-# Merge with population data
-population_dataset = pd.read_csv(p_path)   
+# Merge with population data (dal file pulito, non dal grezzo)
+population_dataset = pd.read_csv(pc_path)
 pop = population_dataset[["region", "population"]].copy()
 panel = panel.merge(pop, on="region", how="left")
 panel["vaccine"] = panel["vaccine"] / panel["population"]
@@ -282,3 +290,6 @@ for name, (s, e) in SPLITS.items():
     X, Y, reg, rid, t0 = make_windows(panel, s, e)
     np.savez_compressed(os.path.join(processed_dir, f"{name}_windows.npz"),
                         X=X, Y=Y, region=reg, region_id=rid, target_start=t0)
+
+print("Output scritto in:", processed_dir)
+print("File creati:", sorted(os.listdir(processed_dir)))

@@ -2,6 +2,8 @@ Data/*.csv
 Data/**/*.csv
 Data/**/*.npz
 Data/*.zip
+Model/**/*.pt
+Model/**/results/
 
 __pycache__/
 *.pyc

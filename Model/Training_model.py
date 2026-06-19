@@ -13,9 +13,23 @@ from torch.utils.data import Dataset, DataLoader
 #For the future we only input (vaccines, mobility, season) which are the ones we want to control
 #Here we perform the forward pass -> injecting Gaussian noise
 
+DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 
-DIRECTORY      = os.path.dirname(os.path.abspath(__file__))
-PROCESSED_DIR  = os.path.join(DIRECTORY, "processed_data")
+def _find_processed_dir():
+    cand = os.path.join(DIRECTORY, "processed_data")
+    if os.path.exists(os.path.join(cand, "dataset_panel.csv")):
+        return cand
+    root = os.path.dirname(DIRECTORY)
+    for dirpath, _, files in os.walk(root):
+        if "dataset_panel.csv" in files:
+            return dirpath
+    raise FileNotFoundError(
+        f"dataset_panel.csv non trovato: lancia data_preparation.py. "
+        f"Cercato in {cand} e nelle sottocartelle di {root}."
+    )
+
+PROCESSED_DIR = _find_processed_dir()
+print("Uso PROCESSED_DIR =", PROCESSED_DIR)
 INPUT_LEN, OUTPUT_LEN = 60, 30   #60 days of past data, 30 days of future data
 PAST_FEATS = ["cases", "deaths", "vaccine", "mobility", "season_sin", "season_cos", "pop_log"]
 FUT_FEATS  = ["vaccine", "mobility", "season_sin", "season_cos"] #pop is constant so no need to include it in the future features
@@ -26,22 +40,22 @@ START = pd.Timestamp("2021-01-01")
 END = pd.Timestamp("2022-12-31")
 
 #Temporal split: no random shuffling, we want to predict the future
-SPLITS ={
-    "train": (START, pd.Timestamp("2022-06-30")),
-    "val": (pd.Timestamp("2022-07-01"), pd.Timestamp("2022-09-30")),
-    "test": (pd.Timestamp("2022-10-01"), END)
+SPLITS = {
+    "train": (START, pd.Timestamp("2021-09-30")),
+    "val":   (pd.Timestamp("2021-10-01"), pd.Timestamp("2021-12-31")),
+    "test":  (pd.Timestamp("2022-01-01"), pd.Timestamp("2022-03-31")),
 }
 
 #Hyperparameters
-T_STEPS = 1000
+T_STEPS = 500
 BETA_START = 1e-4 #noise variance on first step
 BETA_END = 0.02 #noise variance on last step
-EPOCHS = 100  #how many times we iterate over the whole training set
+EPOCHS = 200  #how many times we iterate over the whole training set
 BATCH_SIZE = 128  #Number of windows in training set
 LR = 2e-4   #Learning rate for the optimizer
-WIDTH = 64  #Number of hidden units in the MLP
-COND_DIM = 128  #Dimension of the embedding of the conditioning variables (future features + region id)
-COND_DROPOUT = 0.1  #Dropout rate for the conditioning variables, to make the model more robust to missing data
+WIDTH = 32 #Number of hidden units in the MLP
+COND_DIM = 64  #Dimension of the embedding of the conditioning variables (future features + region id)
+COND_DROPOUT = 0.3  #Dropout rate for the conditioning variables, to make the model more robust to missing data
 EMA_DECAY = 0.999   #Decay rate for the exponential moving average of the model parameters, used for evaluation
 SEED = 0   #Random seed for reproducibility (like set seed in R)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -109,10 +123,10 @@ class PastEncoder(nn.Module):
     def __init__(self, in_ch, out_dim):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv1d(in_ch, 32, 5, padding=2), nn.GELU(),
-            nn.Conv1d(32, 64, 5, padding=2), nn.GELU(),
-            nn.Conv1d(64, 64, 3, padding=1), nn.GELU(),
-        )
+           nn.Conv1d(in_ch, 32, 5, padding=2), nn.GELU(), nn.Dropout(0.2),
+           nn.Conv1d(32, 64, 5, padding=2), nn.GELU(), nn.Dropout(0.2),
+           nn.Conv1d(64, 64, 3, padding=1), nn.GELU(),
+)
         self.head = nn.Linear(64, out_dim)
 
     def forward(self, x_past):
@@ -233,7 +247,7 @@ def main():
     model = ConditionalDenoiser(n_targets=len(TARGETS),
                                 n_fut=len(FUT_FEATS),
                                 n_past=len(PAST_FEATS)).to(DEVICE)
-    opt = torch.optim.AdamW(model.parameters(), lr=LR)
+    opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-3)
     ema = EMA(model, EMA_DECAY)
 
     best_val = float("inf")
