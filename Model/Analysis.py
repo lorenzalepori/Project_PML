@@ -148,14 +148,20 @@ def main():
 
         p = np.percentile(s_z, [0, 1, 50, 99, 100])
         print(f"  [diagnostic {name}] z: min={p[0]:.2f} p1={p[1]:.2f} "
-              f"mediana={p[2]:.2f} p99={p[3]:.2f} max={p[4]:.2f} "
-              f"media={s_z.mean():.3f} std={s_z.std():.3f}")
+              f"median={p[2]:.2f} p99={p[3]:.2f} max={p[4]:.2f} "
+              f"mean={s_z.mean():.3f} std={s_z.std():.3f}")
 
         s_abs = np.empty_like(s_z, dtype=np.float64)
         for i in range(s_z.shape[1]):
             reg = id2reg[int(rid[i])]
             s_abs[:, i] = target_to_abs(s_z[:, i], reg, stats, pop_by_reg[reg])
         scen_abs[name] = s_abs
+        if name == "real_cases":
+           s1_pred_mean = np.nanmean(scen_abs["real_cases"], axis=0)  # (B, 30, 2)
+           mae_deaths = np.nanmean(np.abs(s1_pred_mean[..., 1] - y_true[keep, :, 1]))
+           mae_cases  = np.nanmean(np.abs(s1_pred_mean[..., 0] - y_true[keep, :, 0]))
+           print(f"  MAE deaths (real_cases vs real): {mae_deaths:.4f} z-score")
+           print(f"  MAE cases    (real_cases vs real): {mae_cases:.4f} z-score")
 
     base = scen_abs["real_case"]
     rows = []
@@ -169,15 +175,15 @@ def main():
         per_draw_deaths[name] = finite(tot_deaths)
         rows.append({
             "scenario": name,
-            "casi_tot_mediana":      np.median(finite(tot_cases)),
-            "casi_tot_p05":          np.percentile(finite(tot_cases), 5),
-            "casi_tot_p95":          np.percentile(finite(tot_cases), 95),
-            "decessi_tot_mediana":   np.median(finite(tot_deaths)),
+            "cases_tot_median":      np.median(finite(tot_cases)),
+            "cases_tot_p05":          np.percentile(finite(tot_cases), 5),
+            "cases_tot_p95":          np.percentile(finite(tot_cases), 95),
+            "decessi_tot_median":   np.median(finite(tot_deaths)),
             "decessi_tot_p05":       np.percentile(finite(tot_deaths), 5),
             "decessi_tot_p95":       np.percentile(finite(tot_deaths), 95),
-            "picco_casi_mediana":    np.median(finite(peak)),
-            "casi_vs_S1_mediana":    np.median(finite(d_cases)),
-            "decessi_vs_S1_mediana": np.median(finite(d_deaths)),
+            "picco_cases_median":    np.median(finite(peak)),
+            "cases_vs_S1_median":    np.median(finite(d_cases)),
+            "decessi_vs_S1_median": np.median(finite(d_deaths)),
             "decessi_vs_S1_p05":     np.percentile(finite(d_deaths), 5),
             "decessi_vs_S1_p95":     np.percentile(finite(d_deaths), 95),
         })
@@ -189,9 +195,9 @@ def main():
         return table.loc[table.scenario == scn, c].iloc[0]
 
     print("\nDeaths avoided by the vaccine:"
-          f"   mediana {col('no_intervention','decessi_vs_S1_mediana'):,.0f}"
-          f"   [{col('no_intervention','decessi_vs_S1_p05'):,.0f},"
-          f" {col('no_intervention','decessi_vs_S1_p95'):,.0f}]")
+          f"   median {col('no_intervention','deaths_vs_S1_median'):,.0f}"
+          f"   [{col('no_intervention','deaths_vs_S1_p05'):,.0f},"
+          f" {col('no_intervention','deaths_vs_S1_p95'):,.0f}]")
     print("Additional effect of mobility restriction (no_restrictions_vax - no_intervention): ")
 
     #Trajectories graphs
