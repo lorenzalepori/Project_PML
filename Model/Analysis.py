@@ -425,26 +425,9 @@ def main():
     plt.savefig(os.path.join(OUTPUT_DIR, "deaths_trajectories_national.png"), dpi=130)
     plt.close()
 
-    
-    # --- Plot 2: KDE distribution of total deaths ---
-    plt.figure(figsize=(9, 5))
-    for name, vals in per_draw_deaths.items():
-        if vals.size:
-            kde = gaussian_kde(vals)
-            x = np.linspace(vals.min(), vals.max(), 300)
-            plt.plot(x, kde(x), label=name, color=COLORS[name], linewidth=2)
-            plt.axvline(np.median(vals), color=COLORS[name], linestyle="--", alpha=0.6)
-    plt.axvline(total_observed, color="black", linewidth=2,
-                linestyle="--", label="Observed")
-    plt.xlabel(f"Total deaths ({TOTAL_DAYS}-day horizon)")
-    plt.ylabel("Density")
-    plt.title("Distribution of Total Deaths by Scenario")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(OUTPUT_DIR, "deaths_distribution.png"), dpi=130)
-    plt.close()
 
-    # --- Plot 3: Boxplot ---
+
+    # --- Plot 2: Boxplot ---
     plt.figure(figsize=(9, 5))
     data_to_plot = [finite(per_draw_deaths[name]) for name in SCENARIOS.keys()]
     bp = plt.boxplot(data_to_plot, tick_labels=list(SCENARIOS.keys()),
@@ -465,7 +448,7 @@ def main():
     plt.savefig(os.path.join(OUTPUT_DIR, "deaths_boxplot.png"), dpi=130)
     plt.close()
 
-    # --- Plot 4: Window-by-window deaths (stacked bar) ---
+    # --- Plot 3: Window-by-window deaths (stacked bar) ---
     fig, ax = plt.subplots(figsize=(9, 5))
     x = np.arange(len(SCENARIOS))
     width = 0.6
