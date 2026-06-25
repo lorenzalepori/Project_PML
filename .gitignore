@@ -1,6 +1,7 @@
 Data/*.csv
 Data/**/*.csv
 Data/**/*.npz
+processed_data/diffusion_ckpt.pt
 Data/*.zip
 Model/**/*.pt
 Model/**/results/
