@@ -17,9 +17,8 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # --- Configuration ---
 N_SAMPLES    = 40
 N_WINDOWS    = 3       # autoregressive rollout: 3 x 30 = 90 days total
-GUIDANCE     = 0.0
+GUIDANCE     = 1.0
 BASE_SEED    = 1234
-CLAMP_Z      = 4.0
 LOG_CAP      = 13.0
 
 # Feature indices
@@ -123,7 +122,6 @@ def ddpm_sample(model, sched, x_past, c_fut, rid, n_samples,
                 y = mean + torch.sqrt(betas[t]) * noise
             else:
                 y = mean
-            y = y.clamp(-CLAMP_Z, CLAMP_Z)
         samples.append(y.cpu().numpy())
     return np.stack(samples)  # (n_samples, B, 30, 2)
 
@@ -305,12 +303,12 @@ def main():
 
             # Update contexts for next window using median of generated z-scores
             if w < N_WINDOWS - 1:
-                median_z = np.median(s_z, axis=0)  # (B, 30, 2)
+                mean_z = np.mean(s_z, axis=0)  # (B, 30, 2)
                 for i in range(B):
                     reg = id2reg[int(rid[i])]
                     next_start = window_starts[w + 1]
                     contexts[i] = build_past_context_from_generated(
-                        contexts[i], median_z[i],
+                        contexts[i], mean_z[i],
                         panel, reg, next_start, fac, stats)
 
         # Concatenate windows along time axis → (n_samples, B, TOTAL_DAYS, 2)
@@ -427,41 +425,8 @@ def main():
     plt.savefig(os.path.join(OUTPUT_DIR, "deaths_trajectories_national.png"), dpi=130)
     plt.close()
 
-    # --- Plot 2: Grid of trajectories per region ---
-    all_regions = sorted(set(id2reg.values()))
-    fig, axes = plt.subplots(4, 5, figsize=(20, 16), sharex=True)
-    for ax, reg in zip(axes.flat, all_regions):
-        mask = np.array([id2reg[int(r)] == reg for r in rid])
-        if not mask.any():
-            ax.set_title(reg, fontsize=8)
-            continue
-        for name, samp in scen_abs.items():
-            if name == "real_case":
-                continue
-            traj = uniform_filter1d(
-                np.nanmean(samp[:, mask, :, 1], axis=(0, 1)), size=3)
-            ax.plot(days, traj, color=COLORS[name], linewidth=1, alpha=0.8)
-        obs_traj = uniform_filter1d(
-            np.nanmean(real_abs_mat[mask], axis=0), size=3)
-        ax.plot(days, obs_traj, color="black", linewidth=1.5, linestyle="--")
-        for xl in window_lines:
-            ax.axvline(xl, color="gray", linestyle=":", linewidth=0.8, alpha=0.6)
-        ax.set_title(reg, fontsize=8)
-    for ax in axes.flat[len(all_regions):]:
-        ax.set_visible(False)
-    legend_elements = [Line2D([0], [0], color=COLORS[n], linewidth=2, label=n)
-                       for n in SCENARIOS if n != "real_case"]
-    legend_elements.append(Line2D([0], [0], color="black", linewidth=2,
-                                  linestyle="--", label="Observed"))
-    fig.legend(handles=legend_elements, loc="lower center",
-               ncol=4, fontsize=9, bbox_to_anchor=(0.5, 0.01))
-    fig.suptitle("Counterfactual Trajectories — All regions (90-day horizon)", fontsize=14)
-    plt.tight_layout(rect=[0, 0.05, 1, 1])
-    plt.savefig(os.path.join(OUTPUT_DIR, "trajectories_all_regions.png"),
-                dpi=130, bbox_inches="tight")
-    plt.close()
-
-    # --- Plot 3: KDE distribution of total deaths ---
+    
+    # --- Plot 2: KDE distribution of total deaths ---
     plt.figure(figsize=(9, 5))
     for name, vals in per_draw_deaths.items():
         if vals.size:
@@ -479,7 +444,7 @@ def main():
     plt.savefig(os.path.join(OUTPUT_DIR, "deaths_distribution.png"), dpi=130)
     plt.close()
 
-    # --- Plot 4: Boxplot ---
+    # --- Plot 3: Boxplot ---
     plt.figure(figsize=(9, 5))
     data_to_plot = [finite(per_draw_deaths[name]) for name in SCENARIOS.keys()]
     bp = plt.boxplot(data_to_plot, tick_labels=list(SCENARIOS.keys()),
@@ -500,7 +465,7 @@ def main():
     plt.savefig(os.path.join(OUTPUT_DIR, "deaths_boxplot.png"), dpi=130)
     plt.close()
 
-    # --- Plot 5: Window-by-window deaths (stacked bar) ---
+    # --- Plot 4: Window-by-window deaths (stacked bar) ---
     fig, ax = plt.subplots(figsize=(9, 5))
     x = np.arange(len(SCENARIOS))
     width = 0.6

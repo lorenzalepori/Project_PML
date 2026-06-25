@@ -183,7 +183,7 @@ panel["mobility"] = panel["mobility"].fillna(0.0)
 
 # Clip impossible values
 for c in ["cases", "deaths", "vaccine_elderly", "vaccine_young"]:
-    panel[c] = panel[c].clip(lower=0)
+    panel[c] = panel[c].clip(lower=0) 
 
 # Interpolate remaining mobility gaps
 panel["mobility"] = (panel.groupby("region")["mobility"]
