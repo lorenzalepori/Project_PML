@@ -339,60 +339,9 @@ def main():
     mae_global = np.nanmean(np.abs(pred_real - real_abs_mat))
     print(f"MAE deaths (real_case vs observed, {TOTAL_DAYS} days): {mae_global:.4f}\n")
 
-    # --- MAE by region ---
-    mae_rows = []
-    for i in range(B):
-        reg = id2reg[int(rid[i])]
-        obs  = real_abs_mat[i]
-        pred = np.nanmean(scen_abs["real_case"][:, i, :, 1], axis=0)
-        mae_rows.append({"region": reg,
-                         "mae": np.nanmean(np.abs(pred - obs)),
-                         "obs_mean": np.nanmean(obs)})
-    mae_df = pd.DataFrame(mae_rows).groupby("region").mean().round(3)
-    mae_df["relative_error_pct"] = (mae_df["mae"] / mae_df["obs_mean"] * 100).round(1)
-    mae_df.to_csv(os.path.join(OUTPUT_DIR, "mae_by_region.csv"))
-    print("=== MAE by region ===")
-    print(mae_df.to_string())
-
-    # --- Summary table ---
-    base = scen_abs["real_case"]
-    rows = []
-    per_draw_deaths = {}
-    for name, samp in scen_abs.items():
-        tot_cases  = np.nansum(samp[..., 0], axis=(1, 2))
-        tot_deaths = np.nansum(samp[..., 1], axis=(1, 2))
-        d_cases    = np.nansum(samp[..., 0] - base[..., 0], axis=(1, 2))
-        d_deaths   = np.nansum(samp[..., 1] - base[..., 1], axis=(1, 2))
-        peak       = np.nanmean(np.nanmax(samp[..., 0], axis=2), axis=1)
-        per_draw_deaths[name] = finite(tot_deaths)
-        rows.append({
-            "scenario":              name,
-            "cases_tot_median":      np.median(finite(tot_cases)),
-            "cases_tot_p05":         np.percentile(finite(tot_cases), 5),
-            "cases_tot_p95":         np.percentile(finite(tot_cases), 95),
-            "deaths_tot_median":     np.median(finite(tot_deaths)),
-            "deaths_tot_p05":        np.percentile(finite(tot_deaths), 5),
-            "deaths_tot_p95":        np.percentile(finite(tot_deaths), 95),
-            "peak_cases_median":     np.median(finite(peak)),
-            "cases_vs_real_median":  np.median(finite(d_cases)),
-            "deaths_vs_real_median": np.median(finite(d_deaths)),
-            "deaths_vs_real_p05":    np.percentile(finite(d_deaths), 5),
-            "deaths_vs_real_p95":    np.percentile(finite(d_deaths), 95),
-        })
-    table = pd.DataFrame(rows)
-    table.to_csv(os.path.join(OUTPUT_DIR, "scenario_results.csv"), index=False)
-    print("\n=== Scenario table (absolute counts, 90-day horizon) ===")
-    print(table.to_string(index=False))
-
-    def col(scn, c):
-        return table.loc[table.scenario == scn, c].iloc[0]
-
-    print(f"\nDeaths prevented by vaccines (no_intervention - real_case):"
-          f"   median {col('no_intervention', 'deaths_vs_real_median'):,.0f}"
-          f"   [{col('no_intervention', 'deaths_vs_real_p05'):,.0f},"
-          f" {col('no_intervention', 'deaths_vs_real_p95'):,.0f}]")
-    print(f"Additional effect of mobility reduction (no_restrictions_vax - no_intervention):"
-          f"   {col('no_restrictions_vax','deaths_vs_real_median') - col('no_intervention','deaths_vs_real_median'):,.0f}")
+    # --- Per-draw totals (for boxplot) ---
+    per_draw_deaths = {name: finite(np.nansum(samp[..., 1], axis=(1, 2)))
+                        for name, samp in scen_abs.items()}
 
     # --- Parallel trends check ---
     print("\n=== Parallel trends check ===")
@@ -425,38 +374,41 @@ def main():
     plt.savefig(os.path.join(OUTPUT_DIR, "deaths_trajectories_national.png"), dpi=130)
     plt.close()
 
+    # --- Plot 2: Boxplot (Observed shown as a box, replacing real_case) ---
+    plot_names = [n for n in SCENARIOS.keys() if n != "real_case"]
+    observed_per_region = np.nansum(real_abs_mat, axis=1)  # (B,) totale decessi osservati per regione
 
-
-    # --- Plot 2: Boxplot ---
     plt.figure(figsize=(9, 5))
-    data_to_plot = [finite(per_draw_deaths[name]) for name in SCENARIOS.keys()]
-    bp = plt.boxplot(data_to_plot, tick_labels=list(SCENARIOS.keys()),
+    data_to_plot = [per_draw_deaths[name] for name in plot_names]
+    data_to_plot.append(finite(observed_per_region))
+    labels = plot_names + ["Observed"]
+    box_colors = [COLORS[name] for name in plot_names] + ["gray"]
+
+    bp = plt.boxplot(data_to_plot, tick_labels=labels,
                      patch_artist=True, notch=True)
-    for patch, name in zip(bp['boxes'], SCENARIOS.keys()):
-        patch.set_facecolor(COLORS[name])
+    for patch, color in zip(bp['boxes'], box_colors):
+        patch.set_facecolor(color)
         patch.set_alpha(0.7)
     for median in bp['medians']:
         median.set_color('black')
         median.set_linewidth(2)
-    plt.axhline(total_observed, color="black", linewidth=2,
-                linestyle="--", label="Observed")
     plt.ylabel(f"Total deaths ({TOTAL_DAYS}-day horizon)")
     plt.title("Distribution of Total Deaths by Scenario")
     plt.xticks(rotation=15)
-    plt.legend()
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, "deaths_boxplot.png"), dpi=130)
     plt.close()
 
-    # --- Plot 3: Window-by-window deaths (stacked bar) ---
+    # --- Plot 3: Window-by-window deaths (stacked bar), real_case excluded ---
+    plot_names = [n for n in SCENARIOS.keys() if n != "real_case"]
     fig, ax = plt.subplots(figsize=(9, 5))
-    x = np.arange(len(SCENARIOS))
+    x = np.arange(len(plot_names))
     width = 0.6
-    bottoms = np.zeros(len(SCENARIOS))
+    bottoms = np.zeros(len(plot_names))
     window_colors = ["#4a90d9", "#7bb8f5", "#b8d9f7"]
     for w in range(N_WINDOWS):
         medians = []
-        for name in SCENARIOS.keys():
+        for name in plot_names:
             samp = scen_abs[name]
             win_deaths = np.nansum(samp[:, :, w*OUTPUT_LEN:(w+1)*OUTPUT_LEN, 1],
                                    axis=(1, 2))
@@ -469,7 +421,7 @@ def main():
     ax.axhline(total_observed, color="black", linewidth=2,
                linestyle="--", label="Observed total")
     ax.set_xticks(x)
-    ax.set_xticklabels(list(SCENARIOS.keys()), rotation=15)
+    ax.set_xticklabels(plot_names, rotation=15)
     ax.set_ylabel("Total deaths (median)")
     ax.set_title("Deaths by Window and Scenario")
     ax.legend()

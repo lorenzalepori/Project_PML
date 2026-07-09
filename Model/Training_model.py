@@ -28,7 +28,6 @@ def _find_processed_dir():
     )
 
 PROCESSED_DIR = _find_processed_dir()
-print("Using PROCESSED_DIR =", PROCESSED_DIR)
 
 INPUT_LEN, OUTPUT_LEN = 60, 30
 
@@ -272,7 +271,7 @@ def main():
                 vl += diffusion_loss(model, sched, batch).item() * batch[0].size(0)
         vl /= len(val_ds)
 
-        if epoch % 5 == 0 or epoch == 1:
+        if epoch % 10 == 0 or epoch == 1:
             print(f"epoch {epoch:4d} | train {tr:.4f} | val {vl:.4f}")
 
         if vl < best_val:
@@ -286,9 +285,7 @@ def main():
                             "FUT_FEATS": FUT_FEATS, "TARGETS": TARGETS}},
                 os.path.join(PROCESSED_DIR, "diffusion_ckpt.pt"))
 
-    print(f"Done. Best val loss: {best_val:.4f}")
-    print("Checkpoint saved in processed_data/diffusion_ckpt.pt")
-
+    print(f"Best val loss: {best_val:.4f}")
 
 if __name__ == "__main__":
     main()
