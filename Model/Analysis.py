@@ -17,7 +17,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # --- Configuration ---
 N_SAMPLES    = 40
 N_WINDOWS    = 3       # autoregressive rollout: 3 x 30 = 90 days total
-GUIDANCE     = 1.0
+GUIDANCE     = 0.5
 BASE_SEED    = 1234
 LOG_CAP      = 13.0
 
