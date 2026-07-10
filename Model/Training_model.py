@@ -7,10 +7,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
-# Learns p(cases, deaths | vaccine_elderly, vaccine_young, mobility, region, season)
-# Past context (60 days): full epidemic state with age-stratified vaccine coverage (lagged 21 days)
-# Future covariates (30 days): controllable variables — vaccine_elderly, vaccine_young, mobility, season
-# Targets (30 days): cases, deaths
 
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 
@@ -31,11 +27,11 @@ PROCESSED_DIR = _find_processed_dir()
 
 INPUT_LEN, OUTPUT_LEN = 60, 30
 
-# Past features: full epidemic state (vaccine split by age group, lagged 21 days)
+# Past features
 PAST_FEATS = ["cases", "deaths", "vaccine_elderly", "vaccine_young", "mobility",
               "season_sin", "season_cos", "pop_log", "region_id"]
 
-# Future covariates: controllable variables for counterfactual scenarios
+# Future covariates
 FUT_FEATS  = ["vaccine_elderly", "vaccine_young", "mobility",
               "season_sin", "season_cos"]
 
@@ -45,7 +41,7 @@ N_REGIONS = 20
 START = pd.Timestamp("2021-01-01")
 END   = pd.Timestamp("2022-12-31")
 
-# Temporal split: strict chronological order
+# Temporal split
 SPLITS = {
     "train": (START,                        pd.Timestamp("2021-09-30")),
     "val":   (pd.Timestamp("2021-10-01"),   pd.Timestamp("2021-12-31")),

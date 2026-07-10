@@ -27,7 +27,7 @@ c_path = os.path.join(raw_dir, "covid_dataset.csv")
 if not os.path.exists(c_path):
     pd.read_csv(covid_url).to_csv(c_path, index=False)
 
-# Population total + over65 in a single Eurostat call
+# Population total + over65 
 p_path   = os.path.join(raw_dir, "population_dataset.csv")
 age_path = os.path.join(raw_dir, "population_age_dataset.csv")
 if not os.path.exists(p_path) or not os.path.exists(age_path):
@@ -42,7 +42,7 @@ if not os.path.exists(p_path) or not os.path.exists(age_path):
     # Over-65 population
     df_full[it_mask & (df_full['age'] == 'Y_GE65')][keep_cols].to_csv(age_path, index=False)
 
-# Vaccination by age group (somministrazioni-vaccini-latest.csv)
+# Vaccination by age group
 vacc_age_url = "https://raw.githubusercontent.com/italia/covid19-opendata-vaccini/master/dati/somministrazioni-vaccini-latest.csv"
 va_path = os.path.join(raw_dir, "vaccines_age_dataset.csv")
 if not os.path.exists(va_path):
@@ -73,7 +73,7 @@ else:
 pc_path = os.path.join(processed_dir, "population_clean.csv")
 pop_clean.to_csv(pc_path, index=False)
 
-# --- Over-65 population per region (for vaccine_elderly denominator) ---
+# --- Over-65 population per region ---
 age_raw = pd.read_csv(age_path)
 age_raw["region"] = age_raw["geo\\TIME_PERIOD"].map(region_names)
 age_raw = age_raw.dropna(subset=["region"])
@@ -100,7 +100,7 @@ GOOG_MAP  = {"Lombardy": "Lombardia", "Piedmont": "Piemonte", "Apulia": "Puglia"
              "Aosta": "Valle d'Aosta", "Aosta Valley": "Valle d'Aosta",
              "Trentino-South Tyrol": "Trentino-Alto Adige"}
 
-# Age groups considered elderly (high mortality risk)
+# Age groups considered elderly
 ELDERLY_AGES = ["60-69", "70-79", "80-89", "80+", "90+"]
 
 def report_unmapped(name, regions):
@@ -128,7 +128,6 @@ vacc_age["totale"] = vacc_age["m"] + vacc_age["f"]
 vacc_age["data"]   = pd.to_datetime(vacc_age["data"]).dt.normalize()
 vacc_age["region"] = vacc_age["region"].map(VAX_MAP).fillna(vacc_age["region"])
 
-# CORREZIONE: Rimosso il vecchio filtro distruttivo che eliminava i giovani dal df principale
 report_unmapped("Vaccini age", vacc_age["region"])
 vacc_age = vacc_age[(vacc_age["data"] >= START) & (vacc_age["data"] <= END)]
 
@@ -137,7 +136,7 @@ vacc_elderly = (vacc_age[vacc_age["eta"].isin(ELDERLY_AGES)]
                 .groupby(["region", "data"], as_index=False)
                 .agg(vaccine_elderly=("totale", "sum")))
 
-# Young doses (all other age groups) - ORA FUNZIONA CORRETTAMENTE
+# Young doses
 vacc_young = (vacc_age[~vacc_age["eta"].isin(ELDERLY_AGES)]
               .groupby(["region", "data"], as_index=False)
               .agg(vaccine_young=("totale", "sum")))
@@ -174,7 +173,7 @@ panel = (cal.merge(covid_agg,    on=["region", "data"], how="left")
             .merge(vacc_young,   on=["region", "data"], how="left")
             .merge(mob_agg,      on=["region", "data"], how="left"))
 
-# 2019 = pre-pandemic baseline: fill NaN with 0
+# 2019 = pre-pandemic baseline
 panel["cases"]          = panel["cases"].fillna(0)
 panel["deaths"]         = panel["deaths"].fillna(0)
 panel["vaccine_elderly"] = panel.groupby("region")["vaccine_elderly"].ffill().fillna(0)
@@ -185,7 +184,6 @@ panel["mobility"] = panel["mobility"].fillna(0.0)
 for c in ["cases", "deaths", "vaccine_elderly", "vaccine_young"]:
     panel[c] = panel[c].clip(lower=0) 
 
-# Interpolate remaining mobility gaps
 panel["mobility"] = (panel.groupby("region")["mobility"]
                      .transform(lambda s: s.interpolate(limit_direction="both")))
 
@@ -219,7 +217,6 @@ for c in ["cases", "deaths", "mobility"]:
 panel["cases"]  = np.log1p(100000 * panel["cases"]  / panel["population"])
 panel["deaths"] = np.log1p(100000 * panel["deaths"] / panel["population"])
 
-# CORREZIONE: Ottimizzata la Z-score normalization usando .transform() invece dei cicli for nested
 NORM_VARS = ["cases", "deaths", "vaccine_elderly", "vaccine_young", "mobility"]
 stats = []
 
@@ -228,7 +225,6 @@ for v in NORM_VARS:
     stds = panel.groupby("region")[v].transform(lambda x: x.std(ddof=0))
     stds = stds.replace(0, 1.0).fillna(1.0) # previene divisioni per zero
     
-    # Salva le statistiche storiche richieste dal tuo export statistico
     region_stats = panel.groupby("region")[v].agg(["mean", lambda x: x.std(ddof=0)]).reset_index()
     for _, row in region_stats.iterrows():
         stats.append({"region": row["region"], "variable": v, "mu": row["mean"], "sigma": row.iloc[2] if row.iloc[2] != 0 else 1.0})
@@ -252,7 +248,7 @@ COLS = ["date", "region", "cases", "deaths", "vaccine_elderly", "vaccine_young",
         "mobility", "season_sin", "season_cos", "pop_log", "region_id"]
 panel = panel[COLS].sort_values(["region", "date"]).reset_index(drop=True)
 
-# Save normalised panel
+# Normalised panel
 panel.to_csv(os.path.join(processed_dir, "dataset_panel.csv"), index=False)
 
 # Window building

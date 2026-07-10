@@ -58,8 +58,6 @@ COLORS = {
 TOTAL_DAYS = N_WINDOWS * OUTPUT_LEN  # 90 days
 
 
-# --- Helper functions ---
-
 def load_norm_stats():
     df = pd.read_csv(os.path.join(PROCESSED_DIR, "norm_stats.csv"))
     return {(r["region"], r["variable"]): (float(r["mu"]), float(r["sigma"]))
@@ -139,7 +137,7 @@ def build_future_covariates(panel, region, date_start, n_days, fac, stats):
         for j, feat in enumerate(FUT_FEATS):
             c[:, j] = slice_df[feat].values[:n_days]
     else:
-        # fallback: zeros (should not happen in test period)
+        # fallback: zeros
         return torch.from_numpy(c)
 
     c_t = torch.from_numpy(c)
@@ -186,7 +184,7 @@ def build_past_context_from_generated(
             vals = slice_df[feat].values[:OUTPUT_LEN].astype(np.float32)
             new_context[30:, j] = torch.from_numpy(vals)
 
-    # Scale vaccine and mobility in the new 30-day block according to scenario
+    # Scale vaccine and mobility in the new 30-day block
     vf = fac["vaccine_factor"]
     mf = fac["mobility_factor"]
     if vf != 1.0:
@@ -206,10 +204,9 @@ def finite(a):
     return a[np.isfinite(a)]
 
 
-# --- Main ---
 
 def main():
-    # Load model
+
     ckpt = torch.load(os.path.join(PROCESSED_DIR, "diffusion_ckpt.pt"),
                       map_location=DEVICE)
     cfg = ckpt["config"]
@@ -220,7 +217,6 @@ def main():
     sched = schedule(cfg["T_STEPS"], cfg["BETA_START"], cfg["BETA_END"], DEVICE)
     stats = load_norm_stats()
 
-    # Load panel
     panel = pd.read_csv(os.path.join(PROCESSED_DIR, "dataset_panel.csv"),
                         parse_dates=["date"])
     id2reg = (panel[["region_id", "region"]].drop_duplicates()
@@ -228,7 +224,7 @@ def main():
     pop_by_reg = (panel.groupby("region")["pop_log"].first()
                   .apply(np.exp).to_dict())
 
-    # Build non-overlapping test windows (first window only — rollout handles the rest)
+   
     s_test, e_test = SPLITS["test"]
     x_past_all, c_fut_all, y_true_all, rid_all = build_windows(panel, s_test, e_test)
 
@@ -243,7 +239,7 @@ def main():
     c_fut_init  = c_fut_all[keep]    # (B, 30, n_fut) — first window future covariates
     rid         = rid_all[keep]
 
-    # Get start dates for each window
+
     # Window 1 starts at s_test, window 2 at s_test+30, window 3 at s_test+60
     window_starts = [s_test + pd.Timedelta(days=w * OUTPUT_LEN) for w in range(N_WINDOWS)]
 
@@ -253,17 +249,17 @@ def main():
     print(f"Total horizon: {TOTAL_DAYS} days\n")
 
     # --- Autoregressive rollout for each scenario ---
-    # scen_abs[name] shape: (n_samples, B, TOTAL_DAYS, 2)
+    
     scen_abs = {}
 
     for name, fac in SCENARIOS.items():
         print(f"Scenario: {name}")
         all_windows_abs = []   # list of n_windows arrays, each (n_samples, B, 30, 2)
-        all_windows_z   = []   # same but in z-score space
+        all_windows_z   = []   
 
         # Initialize context with real observed past
         contexts = [torch.from_numpy(x_past_init[i]).clone()
-                    for i in range(B)]  # list of B tensors (60, n_past)
+                    for i in range(B)]  
 
         for w in range(N_WINDOWS):
             w_start = window_starts[w]
@@ -276,7 +272,7 @@ def main():
                 c_fut_w[i] = build_future_covariates(
                     panel, reg, w_start, OUTPUT_LEN, fac, stats)
 
-            # Stack contexts
+            
             x_past_t = torch.stack(contexts).to(DEVICE)   # (B, 60, n_past)
             c_fut_t  = c_fut_w.to(DEVICE)
             rid_t    = torch.from_numpy(rid).to(DEVICE)
@@ -334,12 +330,12 @@ def main():
     total_observed = np.nansum(real_abs_mat)
     print(f"Total observed deaths ({TOTAL_DAYS} days): {total_observed:.0f}")
 
-    # --- MAE calibration (real_case vs observed) ---
+    # --- MAE calibration ---
     pred_real = np.nanmean(scen_abs["real_case"][..., 1], axis=0)  # (B, TOTAL_DAYS)
     mae_global = np.nanmean(np.abs(pred_real - real_abs_mat))
     print(f"MAE deaths (real_case vs observed, {TOTAL_DAYS} days): {mae_global:.4f}\n")
 
-    # --- Per-draw totals (for boxplot) ---
+    # --- Per-draw totals ---
     per_draw_deaths = {name: finite(np.nansum(samp[..., 1], axis=(1, 2)))
                         for name, samp in scen_abs.items()}
 
@@ -354,7 +350,7 @@ def main():
         print(f"  {name}: mean diff={diff.mean():.2f}  std={diff.std():.2f}")
 
     days = np.arange(TOTAL_DAYS)
-    # Vertical lines to mark window boundaries
+   
     window_lines = [OUTPUT_LEN, 2 * OUTPUT_LEN]
 
     # --- Plot 1: National trajectories vs Observed ---
@@ -374,7 +370,7 @@ def main():
     plt.savefig(os.path.join(OUTPUT_DIR, "deaths_trajectories_national.png"), dpi=130)
     plt.close()
 
-    # --- Plot 2: Boxplot (Observed shown as a box, replacing real_case) ---
+    # --- Plot 2: Boxplot ---
     plot_names = [n for n in SCENARIOS.keys() if n != "real_case"]
     observed_per_region = np.nansum(real_abs_mat, axis=1)  # (B,) totale decessi osservati per regione
 
@@ -399,7 +395,7 @@ def main():
     plt.savefig(os.path.join(OUTPUT_DIR, "deaths_boxplot.png"), dpi=130)
     plt.close()
 
-    # --- Plot 3: Window-by-window deaths (stacked bar), real_case excluded ---
+    # --- Plot 3: Window-by-window deaths, real_case excluded ---
     plot_names = [n for n in SCENARIOS.keys() if n != "real_case"]
     fig, ax = plt.subplots(figsize=(9, 5))
     x = np.arange(len(plot_names))
